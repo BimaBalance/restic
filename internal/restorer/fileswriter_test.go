@@ -172,3 +172,26 @@ func TestCreateFileRecursiveDelete(t *testing.T) {
 	rtest.Assert(t, fi.Mode().IsRegular(), "wrong filetype %v", fi.Mode())
 	rtest.OK(t, f.Close())
 }
+
+func TestCreateFileDoesNotFollowExternalSymlink(t *testing.T) {
+	root := t.TempDir()
+
+	outside := filepath.Join(root, "outside.txt")
+	restoreDir := filepath.Join(root, "restore")
+	link := filepath.Join(restoreDir, "target.txt")
+
+	rtest.OK(t, os.Mkdir(restoreDir, 0o700))
+	original := []byte("DO NOT MODIFY THIS FILE")
+	rtest.OK(t, os.WriteFile(outside, original, 0o600))
+
+	// Simulate a pre-existing symlink inside the restore destination.
+	rtest.OK(t, os.Symlink(outside, link))
+
+	f, err := createFile(link, 5, false, false)
+	rtest.OK(t, err)
+	rtest.OK(t, f.Close())
+
+	got, err := os.ReadFile(outside)
+	rtest.OK(t, err)
+	rtest.Equals(t, original, got, "external file was modified through symlink")
+}
