@@ -578,3 +578,35 @@ func TestRestoreDeleteCaseInsensitive(t *testing.T) {
 	_, err = os.Stat(filepath.Join(tempdir, "anotherfile"))
 	rtest.OK(t, err)
 }
+
+func TestRestoreToDoesNotFollowExternalSymlink(t *testing.T) {
+	repo := repository.TestRepository(t)
+
+	sn, _ := saveSnapshot(t, repo, Snapshot{
+		Nodes: map[string]Node{
+			"target.txt": File{Data: "RESTORED CONTENT"},
+		},
+	}, noopGetGenericAttributes)
+
+	restoreDir := filepath.Join(rtest.TempDir(t), "restore")
+	rtest.OK(t, os.Mkdir(restoreDir, 0700))
+
+	outside := filepath.Join(rtest.TempDir(t), "outside.txt")
+	original := []byte("DO NOT MODIFY THIS EXTERNAL FILE")
+	rtest.OK(t, os.WriteFile(outside, original, 0600))
+
+	link := filepath.Join(restoreDir, "target.txt")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("cannot create symlink: %v", err)
+	}
+
+	res := NewRestorer(repo, sn, Options{})
+	_, err := res.RestoreTo(context.Background(), restoreDir)
+	rtest.OK(t, err)
+
+	got, err := os.ReadFile(outside)
+	rtest.OK(t, err)
+
+	rtest.Equals(t, original, got,
+		"RestoreTo modified an external file through a symlink")
+}
